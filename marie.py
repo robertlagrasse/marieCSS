@@ -1,3 +1,17 @@
+# Author: Robert LaGrasse - robert.lagrasse@gmail.com
+# ============================================
+# DISCLAIMER:
+#
+# The code provided in this file is for educational and/or experimental purposes only.
+# It is not intended for use in production environments or for any commercial purpose.
+#
+# The author(s) of this code are not responsible for any consequences, direct or indirect,
+# resulting from the use or misuse of this code.
+#
+# Use at your own risk.
+# ============================================
+
+
 # The Cloud Storage Service relies on client_credentials authorization
 # You need a bearer token from the auth server to make CSS API requests
 
@@ -14,8 +28,6 @@ import sys
 import time
 import random
 
-#sys.path.insert(0, '/Users/robert/Documents/python/skunklibs/skunkworksAuth/')
-#sys.path.insert(0, '/Users/robert/Documents/python/skunklibs/skunkworksCSS/')
 
 from skunkworksAuth import clientCredentialsAuthorize
 from skunkworksCSS import getCSS_ObjectsList
@@ -26,10 +38,15 @@ from skunkworksCSS import getCSS_BulkContent
 from skunkworksCSS import clearCSS_BulkRequests
 from skunkworksCSS import getCSS_ObjectContent
 
-# add directory containing skunkworks libraries to your path
-
+# The credentials generated in the Admin console should live in the file specified here.
+# Use an external file like this, or an enviornment variable. Don't put keys in your code.
 
 credentials = 'creds.json'
+
+# Feed the credentials to the clientCredentialsAuthorize() function, which will
+# use them to build a request to the authentication server. If the request is successful,
+# a bearer token in returned. The accompanies any requests to the CSS endpoint.
+
 response = clientCredentialsAuthorize(credentials=credentials)
 
 if 'Error' in response.keys():
@@ -41,7 +58,7 @@ token = response['access_token']
 expiration = int(response['issued_at']) + int(response['expires_in'])
 
 
-## Generate a list of objects that match what you're looking for.
+## Ask CSS for a list of objects using getCSS_ObjectsList(). Filtering is available here.
 ## I'm filtering here by type (callrecording), and looking for a +1 in the
 ## name of the recorded object. The name piece is looking for the +1 that
 ## prepends the telephone number. It's a hack, but it saves you parsing a longer
@@ -50,6 +67,11 @@ expiration = int(response['issued_at']) + int(response['expires_in'])
 objectList = getCSS_ObjectsList(
     token, filter='type==callrecording,name==+1', sortDirection='DESC')
 print('getCSS_ObjectsList returned', len(objectList), 'items.')
+
+# Individual objects can be downloaded by passing a token and an object id  to getCSS_ObjectContent()
+# If you're downloading multiple objects, it's more efficient to pass a token and a list
+# of objects to initiateCSS_BulkDownload(). The server will zip the files and make them
+# available to download in a single request. The process is detailed below...
 
 
 ################################################################################
@@ -72,22 +94,20 @@ print('getCSS_ObjectsList returned', len(objectList), 'items.')
 
 ################################################################################
 
+# identify the objects to download
 if len(objectList) > 0:
     ids = []
     for index, item in enumerate(objectList):
         ids.append(objectList[index]['id'])
 
-    print('List contains the following object ids:')
-    for id in ids:
-        print(id)
-
+# initiate the download request
     print('\n Initiating bulk download request.\n')
     status = initiateCSS_BulkDownload(token, ids)
     print('API Returned:\n')
     print(json.dumps(status.text, indent=4, sort_keys=True))
 
+# periodically check on the status of your download request
 print('Waiting for zipfiles...\n')
-
 unfinished = True
 while unfinished:
     time.sleep(1)
@@ -99,12 +119,14 @@ while unfinished:
         if item['status'] != "DONE":
             unfinished = True
 
+# when your files are ready, retrieve them
 print('Zip file(s) ready on server. Initiating download.')
 for item in response:
     print('Downloading: ' + item['zipName'])
     filesize = getCSS_BulkContent(token, item['zipName'], item['zipName'])
     print('Complete. Filesize: ' + str(filesize))
 
+# clean up the zip files from the server
 print('Downloads complete. Clearing bulk requests from server.')
 response = clearCSS_BulkRequests(token)
 print(response)
